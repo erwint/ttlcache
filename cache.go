@@ -17,6 +17,7 @@ type Cache struct {
 	ttl                    time.Duration
 	items                  map[string]*item
 	expireCallback         expireCallback
+	removeCallback         expireCallback
 	checkExpireCallback    checkExpireCallback
 	newItemCallback        expireCallback
 	priorityQueue          *priorityQueue
@@ -108,6 +109,9 @@ func (cache *Cache) startExpirationProcessing() {
 
 				cache.priorityQueue.remove(item)
 				delete(cache.items, item.key)
+				if cache.removeCallback != nil {
+					go cache.removeCallback(item.key, item.data)
+				}
 				if cache.expireCallback != nil {
 					go cache.expireCallback(item.key, item.data)
 				}
@@ -154,6 +158,9 @@ func (cache *Cache) SetWithTTL(key string, data interface{}, ttl time.Duration) 
 	item, exists, _ := cache.getItem(key)
 
 	if exists {
+		if cache.removeCallback != nil {
+			cache.removeCallback(key, item.data)
+		}
 		item.data = data
 		item.ttl = ttl
 	} else {
@@ -207,6 +214,9 @@ func (cache *Cache) Remove(key string) bool {
 	}
 	delete(cache.items, object.key)
 	cache.priorityQueue.remove(object)
+	if cache.removeCallback != nil {
+		go cache.removeCallback(key, object)
+	}
 	cache.mutex.Unlock()
 
 	return true
@@ -230,6 +240,11 @@ func (cache *Cache) SetTTL(ttl time.Duration) {
 // SetExpirationCallback sets a callback that will be called when an item expires
 func (cache *Cache) SetExpirationCallback(callback expireCallback) {
 	cache.expireCallback = callback
+}
+
+// RemoveCallback sets a callback that will be called when an item is removed
+func (cache *Cache) SetRemoveCallback(callback expireCallback) {
+	cache.removeCallback = callback
 }
 
 // SetCheckExpirationCallback sets a callback that will be called when an item is about to expire

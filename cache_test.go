@@ -371,6 +371,41 @@ func TestCacheExpirationCallbackFunction(t *testing.T) {
 	assert.Equal(t, 2, expiredCount, "Expected 2 items to be expired")
 }
 
+// TestCacheRemoveCallbackFunction ensures the removeCallback is called
+// a) when an item is removed
+// b) when an item is replaced
+// c) when an item is expired
+func TestCacheRemoveCallbackFunction(t *testing.T) {
+	removedCount := 0
+	var lock sync.Mutex
+
+	cache := NewCache()
+	defer cache.Close()
+
+	cache.SetRemoveCallback(func(key string, value interface{}) {
+		lock.Lock()
+		defer lock.Unlock()
+		removedCount = removedCount + 1
+	})
+
+	cache.Set("key_1", "value")
+	// this calls removeCallback
+	cache.Remove("key_1")
+
+	cache.Set("key_1", "value")
+	// this calls removeCallback
+	cache.Set("key_1", "value2")
+
+	// this calls removeCallback on expiry
+	cache.SetWithTTL("key", "value", time.Duration(1000*time.Millisecond))
+	cache.Set("key_2", "value")
+	<-time.After(1100 * time.Millisecond)
+
+	lock.Lock()
+	defer lock.Unlock()
+	assert.Equal(t, 3, removedCount, "Expected 3 items to be removed")
+}
+
 // TestCacheCheckExpirationCallbackFunction should consider that the next entry in the queue
 // needs to be considered for eviction even if the callback returns no eviction for the current item
 func TestCacheCheckExpirationCallbackFunction(t *testing.T) {
