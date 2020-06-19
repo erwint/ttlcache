@@ -1,6 +1,7 @@
 package ttlcache
 
 import (
+	"errors"
 	"math/rand"
 	"testing"
 	"time"
@@ -347,6 +348,33 @@ func TestCacheGet(t *testing.T) {
 	assert.NotNil(t, data, "Expected data to be not nil")
 	assert.Equal(t, true, exists, "Expected data to exist")
 	assert.Equal(t, "world", (data.(string)), "Expected data content to be 'world'")
+}
+
+func TestCacheGetOrDefault(t *testing.T) {
+	cache := NewCache()
+	defer cache.Close()
+
+	data, err := cache.GetOrDefault("hello", func(key string) (interface{}, error) {
+		return "value", nil
+	})
+	assert.Nil(t, err, "Expected cache to succeed")
+	assert.Equal(t, "value", data, "Expected data content to be the default 'value'")
+
+	cache.Set("hello", "world")
+	data, err = cache.GetOrDefault("hello", func(key string) (interface{}, error) {
+		return "value", nil
+	})
+	assert.Nil(t, err, "Expected cache to succeed")
+	assert.Equal(t, "world", data, "Expected data content to be the last set 'world'")
+
+	cache.Remove("hello")
+	data, err = cache.GetOrDefault("hello", func(key string) (interface{}, error) {
+		return nil, errors.New("error")
+	})
+	assert.Error(t, err, "Expected cache to succeed")
+	if assert.Error(t, err) {
+		assert.Equal(t, errors.New("error"), err)
+	}
 }
 
 func TestCacheExpirationCallbackFunction(t *testing.T) {

@@ -205,6 +205,41 @@ func (cache *Cache) Get(key string) (interface{}, bool) {
 	return dataToReturn, exists
 }
 
+// GetOrDefault is a thread-safe way to lookup items and invoke
+// a function to create and store a default value if it is not.
+// This operation is atomic, and the whole cache is locked while
+// the generator is called to create the default value.
+// Every lookup, also touches the item, hence extending it's life
+func (cache *Cache) GetOrDefault(key string, generator func(string) (interface{}, error)) (interface{}, error) {
+	cache.mutex.Lock()
+	item, exists, triggerExpirationNotification := cache.getItem(key)
+
+	var dataToReturn interface{}
+
+	if exists {
+		dataToReturn = item.data
+	} else {
+		var err error
+		dataToReturn, err = generator(key)
+		if err != nil {
+			cache.mutex.Unlock()
+			return nil, err
+		}
+		item = newItem(key, dataToReturn, ItemExpireWithGlobalTTL)
+		cache.items[key] = item
+		cache.priorityQueue.push(item)
+	}
+	cache.mutex.Unlock()
+	if !exists && cache.newItemCallback != nil {
+		cache.newItemCallback(key, dataToReturn)
+	}
+	if triggerExpirationNotification {
+		cache.expirationNotification <- true
+	}
+	return dataToReturn, nil
+
+}
+
 func (cache *Cache) Remove(key string) bool {
 	cache.mutex.Lock()
 	object, exists := cache.items[key]
